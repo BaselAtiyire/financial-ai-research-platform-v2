@@ -1,3 +1,7 @@
+## Live Demo
+
+https://financial-ai-research-platform-v2-xcjjodytrwynpcjglvebff.streamlit.app/
+
 # Financial AI Research Platform
 
 AI-powered financial research platform for document extraction, multi-document RAG, forecasting, market data analysis, sentiment detection, valuation modeling, and equity research report generation.
