@@ -1,11 +1,13 @@
-Financial-ai-extractor
-│
-├── app.py
-├── extractor.py
-├── rag_utils.py
-├── forecast_utils.py
-├── market_utils.py
-├── sentiment_utils.py
-├── anomaly_utils.py
-├── requirements.txt
-└── .env
+streamlit
+pandas
+plotly
+python-dotenv
+pymupdf
+langchain-groq
+langchain-core>=0.3.75,<1.0.0
+pydantic>=2.7,<3.0
+chromadb
+sentence-transformers
+langchain-community
+scikit-learn
+yfinance
