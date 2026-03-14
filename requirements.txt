@@ -1,0 +1,11 @@
+Financial-ai-extractor
+│
+├── app.py
+├── extractor.py
+├── rag_utils.py
+├── forecast_utils.py
+├── market_utils.py
+├── sentiment_utils.py
+├── anomaly_utils.py
+├── requirements.txt
+└── .env

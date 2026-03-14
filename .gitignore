@@ -1,0 +1,17 @@
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+(2).env
+.streamlit/secrets.toml
+__pycache__/
+.ipynb_checkpoints/
+*.ipynb
+*.db
+*.sqlite3
+chromadb/
+chroma_db/
+vector_store/
+faiss_index/
