@@ -4,23 +4,28 @@ from collections import Counter
 POSITIVE_WORDS = {
     "growth", "strong", "improved", "record", "opportunity", "confidence",
     "accelerate", "expansion", "profitability", "beat", "outperform",
-    "momentum", "efficient", "innovation", "resilient", "optimistic"
+    "momentum", "efficient", "innovation", "resilient", "optimistic",
 }
 
 NEGATIVE_WORDS = {
     "risk", "decline", "weakness", "pressure", "uncertainty", "slowdown",
     "loss", "challenge", "volatile", "headwind", "miss", "underperform",
-    "constraint", "inflation", "debt", "disruption", "cautious"
+    "constraint", "inflation", "debt", "disruption", "cautious",
 }
 
 GUIDANCE_WORDS = {
     "guidance", "outlook", "forecast", "expect", "project", "anticipate",
-    "target", "next quarter", "next year"
+    "target", "next quarter", "next year",
 }
 
 RISK_WORDS = {
     "risk", "uncertainty", "headwind", "competition", "inflation",
-    "regulation", "supply chain", "macro", "slowdown", "currency"
+    "regulation", "supply chain", "macro", "slowdown", "currency",
+}
+
+STOP_WORDS = {
+    "that", "this", "with", "from", "have", "were", "been", "their",
+    "about", "into", "than", "will", "they", "year", "quarter",
 }
 
 
@@ -43,7 +48,6 @@ def count_keyword_hits(tokens: list[str], keywords: set[str]) -> int:
 
 def analyze_earnings_sentiment(text: str) -> dict:
     tokens = normalize_text(text)
-
     if not tokens:
         return {
             "sentiment_score": 0,
@@ -72,10 +76,7 @@ def analyze_earnings_sentiment(text: str) -> dict:
 
     filtered_terms = [
         t for t in tokens
-        if len(t) > 3 and t not in {
-            "that", "this", "with", "from", "have", "were", "been", "their",
-            "about", "into", "than", "will", "they", "year", "quarter"
-        }
+        if len(t) > 3 and t not in STOP_WORDS
     ]
     top_terms = dict(Counter(filtered_terms).most_common(10))
 
