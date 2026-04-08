@@ -23,7 +23,9 @@ class FinancialMetric(BaseModel):
 
 class ExtractionResult(BaseModel):
     company_name: str | None = Field(description="Company name if detected.")
-    document_type: str | None = Field(description="Type of document such as annual report, earnings release, or financial statement.")
+    document_type: str | None = Field(
+        description="Type of document such as annual report, earnings release, or financial statement."
+    )
     summary: str | None = Field(description="Short summary of what the document contains.")
     metrics: list[FinancialMetric] = Field(description="List of extracted financial metrics.")
 
@@ -31,7 +33,6 @@ class ExtractionResult(BaseModel):
 def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 8) -> str:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     pages = []
-
     try:
         total_pages = min(len(doc), max_pages)
         for i in range(total_pages):
@@ -40,15 +41,21 @@ def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 8) -> str:
             pages.append(f"[PAGE {i + 1}]\n{page_text}")
     finally:
         doc.close()
-
     return "\n\n".join(pages).strip()
 
 
-def extract_financial_metrics_from_text(text: str, temperature: float = 0.0) -> dict:
+def _get_llm(temperature: float = 0.0) -> ChatGroq:
     groq_api_key = os.getenv("GROQ_API_KEY")
     if not groq_api_key:
         raise RuntimeError("Missing GROQ_API_KEY. Add it to your .env file or Streamlit secrets.")
+    return ChatGroq(
+        model="llama-3.1-8b-instant",
+        temperature=temperature,
+        api_key=groq_api_key,
+    )
 
+
+def extract_financial_metrics_from_text(text: str, temperature: float = 0.0) -> dict:
     parser = JsonOutputParser(pydantic_object=ExtractionResult)
 
     prompt = ChatPromptTemplate.from_template(
@@ -65,19 +72,15 @@ Rules:
 - Include a short evidence quote for each metric.
 - Use null when unknown.
 - Do not invent data.
-- Prefer important finance metrics such as Revenue, Net Income, EPS, Operating Income, Gross Profit, Gross Margin, EBITDA, Free Cash Flow, Total Assets, Total Liabilities, Guidance.
+- Prefer important finance metrics such as Revenue, Net Income, EPS, Operating Income,
+  Gross Profit, Gross Margin, EBITDA, Free Cash Flow, Total Assets, Total Liabilities, Guidance.
 
 Document text:
 {text}
 """
     )
 
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=temperature,
-        api_key=groq_api_key,
-    )
-
+    llm = _get_llm(temperature)
     chain = prompt | llm | parser
     result = chain.invoke(
         {
@@ -89,10 +92,6 @@ Document text:
 
 
 def summarize_document(text: str, temperature: float = 0.0) -> str:
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    if not groq_api_key:
-        raise RuntimeError("Missing GROQ_API_KEY. Add it to your .env file or Streamlit secrets.")
-
     prompt = ChatPromptTemplate.from_template(
         """
 You are a financial analyst assistant.
@@ -105,12 +104,7 @@ Document text:
 """
     )
 
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=temperature,
-        api_key=groq_api_key,
-    )
-
+    llm = _get_llm(temperature)
     chain = prompt | llm
     response = chain.invoke({"text": text[:12000]})
 
@@ -119,11 +113,9 @@ Document text:
     return str(response)
 
 
-def answer_financial_question(query: str, context_chunks: list[str], temperature: float = 0.0) -> str:
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    if not groq_api_key:
-        raise RuntimeError("Missing GROQ_API_KEY. Add it to your .env file or Streamlit secrets.")
-
+def answer_financial_question(
+    query: str, context_chunks: list[str], temperature: float = 0.0
+) -> str:
     context = "\n\n".join(context_chunks)
 
     prompt = ChatPromptTemplate.from_template(
@@ -141,12 +133,7 @@ Question:
 """
     )
 
-    llm = ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=temperature,
-        api_key=groq_api_key,
-    )
-
+    llm = _get_llm(temperature)
     chain = prompt | llm
     response = chain.invoke({"context": context[:12000], "query": query})
 
@@ -157,7 +144,6 @@ Question:
 
 def categorize_metric(metric: str) -> str:
     metric = (metric or "").lower()
-
     if "revenue" in metric or "sales" in metric:
         return "Revenue"
     if "income" in metric or "profit" in metric or "earnings" in metric or "eps" in metric:
@@ -168,24 +154,19 @@ def categorize_metric(metric: str) -> str:
         return "Balance Sheet"
     if "expense" in metric or "cost" in metric or "operating" in metric:
         return "Operations"
-
     return "Other"
 
 
 def convert_value_to_numeric(value) -> float | None:
     if value is None:
         return None
-
     text = str(value).strip()
     if not text:
         return None
-
     is_negative = "(" in text and ")" in text
     cleaned = re.sub(r"[^0-9.\-]", "", text)
-
     if cleaned.count(".") > 1:
         return None
-
     try:
         number = float(cleaned)
         if is_negative and number > 0:
@@ -198,7 +179,6 @@ def convert_value_to_numeric(value) -> float | None:
 def parse_period_to_index(period: str):
     if not period:
         return None
-
     text = str(period).strip().upper()
 
     quarter_match = re.match(r"Q([1-4])\s+(\d{4})", text)
@@ -209,8 +189,7 @@ def parse_period_to_index(period: str):
 
     fy_match = re.match(r"FY\s*(\d{4})", text)
     if fy_match:
-        year = int(fy_match.group(1))
-        return year
+        return int(fy_match.group(1))
 
     year_match = re.match(r"(\d{4})", text)
     if year_match:
@@ -222,7 +201,6 @@ def parse_period_to_index(period: str):
 def clean_llm_json(result):
     if isinstance(result, dict):
         return result
-
     if isinstance(result, str):
         text = result.strip()
         text = re.sub(r"^```json", "", text)
@@ -230,5 +208,4 @@ def clean_llm_json(result):
         text = re.sub(r"```$", "", text)
         text = text.strip()
         return json.loads(text)
-
-    raise ValueError("Unexpected LLM response format.")
+    raise ValueError(f"Unexpected LLM response format: {type(result)}")
