@@ -4,14 +4,12 @@ import pandas as pd
 def detect_metric_anomalies(df: pd.DataFrame, threshold: float = 0.3) -> pd.DataFrame:
     """
     Flags anomalies when the relative change between consecutive periods
-    exceeds the threshold.
-    Example: threshold=0.3 means 30% change.
+    exceeds the threshold. Example: threshold=0.3 means 30% change.
     """
     if df.empty:
         return pd.DataFrame()
 
     working = df.copy()
-
     required_cols = {"metric", "numeric_value", "period_index"}
     if not required_cols.issubset(set(working.columns)):
         return pd.DataFrame()
@@ -19,16 +17,17 @@ def detect_metric_anomalies(df: pd.DataFrame, threshold: float = 0.3) -> pd.Data
     if "document_name" not in working.columns:
         working["document_name"] = "Unknown"
 
+    if "period" not in working.columns:
+        working["period"] = working["period_index"].astype(str)
+
     working = working.dropna(subset=["metric", "numeric_value", "period_index"])
     working = working.sort_values(["document_name", "metric", "period_index"])
 
     anomaly_rows = []
-
     grouped = working.groupby(["document_name", "metric"], dropna=True)
 
     for (document_name, metric), group in grouped:
         group = group.sort_values("period_index").copy()
-
         if len(group) < 2:
             continue
 
@@ -49,17 +48,14 @@ def detect_metric_anomalies(df: pd.DataFrame, threshold: float = 0.3) -> pd.Data
 
         for _, row in flagged.iterrows():
             change_pct = row["pct_change"] * 100 if row["pct_change"] is not None else None
-
             if change_pct is None:
                 continue
-
             anomaly_type = "Spike" if change_pct > 0 else "Drop"
-
             anomaly_rows.append(
                 {
                     "document_name": document_name,
                     "metric": metric,
-                    "period": row["period"],
+                    "period": row.get("period", str(row["period_index"])),
                     "current_value": row["numeric_value"],
                     "previous_value": row["previous_value"],
                     "change_pct": change_pct,
