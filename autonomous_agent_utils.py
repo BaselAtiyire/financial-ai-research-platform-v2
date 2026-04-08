@@ -1,6 +1,7 @@
 from analyst_agent_utils import run_financial_analyst_agent
 from recommendation_utils import generate_recommendation
 from risk_utils import detect_company_risk
+from datetime import date
 
 
 def run_autonomous_financial_agent(
@@ -24,48 +25,56 @@ def run_autonomous_financial_agent(
 
     risks = detect_company_risk(metrics, sentiment_result)
     recommendation = generate_recommendation(valuation_result, sentiment_result)
+    today = date.today().strftime("%B %d, %Y")
 
-    final_brief_lines = []
-    final_brief_lines.append(f"# Autonomous Financial Analyst Brief: {company_name} ({ticker})")
-    final_brief_lines.append(f"## Recommendation\n**{recommendation}**")
+    rec_emoji = {"BUY": "🟢", "HOLD": "🟡", "SELL": "🔴"}.get(recommendation, "⚪")
+
+    lines = []
+    lines.append(f"# 🤖 Autonomous Financial Analyst Brief")
+    lines.append(f"## {company_name} ({ticker})")
+    lines.append(f"*Generated: {today}*")
+    lines.append("---")
+
+    lines.append(f"## Recommendation: {rec_emoji} {recommendation}")
 
     if valuation_result:
-        final_brief_lines.append("## Valuation Summary")
         efv = valuation_result.get("estimated_fair_value")
         gap = valuation_result.get("valuation_gap_pct")
-        final_brief_lines.append(f"- **Signal:** {valuation_result.get('signal', 'N/A')}")
-        final_brief_lines.append(
-            f"- **Fair Value:** {f'{efv:,.0f}' if efv is not None else 'N/A'}"
-        )
-        final_brief_lines.append(
-            f"- **Valuation Gap %:** {f'{gap:.2f}%' if gap is not None else 'N/A'}"
-        )
+        signal = valuation_result.get("signal", "N/A")
+        methods = valuation_result.get("methods_used", 0)
+        lines.append("## Valuation Summary")
+        lines.append(f"- **Signal:** {signal} ({methods} method(s))")
+        lines.append(f"- **Fair Value:** {'${:,.0f}'.format(efv) if efv else 'N/A'}")
+        lines.append(f"- **Valuation Gap:** {'{:.2f}%'.format(gap) if gap is not None else 'N/A'}")
+
+    if market_snapshot:
+        price = market_snapshot.get("price")
+        market_cap = market_snapshot.get("market_cap")
+        lines.append("## Market Data")
+        lines.append(f"- **Price:** {'${:.2f}'.format(price) if price else 'N/A'}")
+        lines.append(f"- **Market Cap:** {'${:,.0f}'.format(market_cap) if market_cap else 'N/A'}")
 
     if sentiment_result:
-        final_brief_lines.append("## Sentiment Summary")
-        final_brief_lines.append(
-            f"- **Sentiment Label:** {sentiment_result.get('sentiment_label', 'N/A')}"
-        )
-        final_brief_lines.append(
-            f"- **Sentiment Score:** {sentiment_result.get('sentiment_score', 0)}"
-        )
-        final_brief_lines.append(
-            f"- **Risk Mentions:** {sentiment_result.get('risk_hits', 0)}"
-        )
+        label = sentiment_result.get("sentiment_label", "N/A")
+        lines.append("## Sentiment")
+        lines.append(f"- **Label:** {label}")
+        lines.append(f"- **Score:** {sentiment_result.get('sentiment_score', 0)}")
+        lines.append(f"- **Risk Mentions:** {sentiment_result.get('risk_hits', 0)}")
 
+    lines.append("## Risk Assessment")
     if risks:
-        final_brief_lines.append("## Risk Signals")
         for risk in risks:
-            final_brief_lines.append(f"- ⚠️ {risk}")
+            lines.append(f"- {risk}")
     else:
-        final_brief_lines.append("## Risk Signals\n- ✅ No major risk flags detected.")
+        lines.append("- ✅ No major risk flags detected.")
 
     if investment_thesis:
-        final_brief_lines.append(investment_thesis)
+        lines.append(investment_thesis)
 
-    final_brief_lines.append(
-        "> ⚠️ This brief is AI-generated and should be used for research purposes only. "
-        "It does not constitute investment advice."
+    lines.append("---")
+    lines.append(
+        "> ⚠️ *This brief is AI-generated for educational/research purposes only. "
+        "Not investment advice.*"
     )
 
     return {
@@ -74,5 +83,5 @@ def run_autonomous_financial_agent(
         "valuation_result": valuation_result,
         "research_report": research_report,
         "investment_thesis": investment_thesis,
-        "final_brief": "\n\n".join(final_brief_lines),
+        "final_brief": "\n\n".join(lines),
     }
