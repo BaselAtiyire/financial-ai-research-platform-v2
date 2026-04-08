@@ -1,17 +1,17 @@
-# rag_utils.py — FAISS-based replacement for chromadb
-import faiss
+# rag_utils.py — pure sklearn/numpy replacement, no chromadb or faiss needed
 import numpy as np
-import pickle, os, hashlib
-from sentence_transformers import SentenceTransformer
+import pickle
+import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-INDEX_PATH = "/tmp/faiss_index.pkl"
+INDEX_PATH = "/tmp/rag_store.pkl"
 
 def _load():
     if os.path.exists(INDEX_PATH):
         with open(INDEX_PATH, "rb") as f:
             return pickle.load(f)
-    return {"embeddings": [], "docs": [], "ids": []}
+    return {"docs": [], "ids": []}
 
 def _save(store):
     with open(INDEX_PATH, "wb") as f:
@@ -19,22 +19,29 @@ def _save(store):
 
 def index_document(doc_id: str, text: str):
     store = _load()
-    emb = MODEL.encode([text])[0].tolist()
-    store["embeddings"].append(emb)
-    store["docs"].append(text)
-    store["ids"].append(doc_id)
-    _save(store)
+    # Avoid duplicates
+    if doc_id not in store["ids"]:
+        store["docs"].append(text)
+        store["ids"].append(doc_id)
+        _save(store)
 
 def search_documents(query: str, n_results: int = 5):
     store = _load()
-    if not store["embeddings"]:
+    if not store["docs"]:
         return []
-    q_emb = MODEL.encode([query]).astype("float32")
-    matrix = np.array(store["embeddings"], dtype="float32")
-    index = faiss.IndexFlatL2(matrix.shape[1])
-    index.add(matrix)
-    D, I = index.search(q_emb, min(n_results, len(store["docs"])))
-    return [store["docs"][i] for i in I[0] if i < len(store["docs"])]
+    
+    vectorizer = TfidfVectorizer(stop_words="english")
+    # Fit on all docs + query together
+    all_texts = store["docs"] + [query]
+    tfidf_matrix = vectorizer.fit_transform(all_texts)
+    
+    doc_vectors = tfidf_matrix[:-1]
+    query_vector = tfidf_matrix[-1]
+    
+    scores = cosine_similarity(query_vector, doc_vectors)[0]
+    top_indices = np.argsort(scores)[::-1][:n_results]
+    
+    return [store["docs"][i] for i in top_indices if scores[i] > 0]
 
 def reset_collection():
     if os.path.exists(INDEX_PATH):
