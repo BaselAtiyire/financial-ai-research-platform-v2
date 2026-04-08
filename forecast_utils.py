@@ -9,17 +9,17 @@ def prepare_metric_history(df: pd.DataFrame, metric_name: str) -> pd.DataFrame:
     return metric_df
 
 
-def forecast_next_value(metric_df: pd.DataFrame):
+def forecast_next_value(metric_df: pd.DataFrame) -> dict | None:
     if metric_df.empty or len(metric_df) < 2:
         return None
 
-    X = metric_df[["period_index"]]
-    y = metric_df["numeric_value"]
+    X = metric_df[["period_index"]].values
+    y = metric_df["numeric_value"].values
 
     model = LinearRegression()
     model.fit(X, y)
 
-    next_index = metric_df["period_index"].max() + 1
+    next_index = int(metric_df["period_index"].max()) + 1
     predicted_value = model.predict([[next_index]])[0]
 
     return {
