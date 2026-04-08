@@ -9,7 +9,7 @@ def run_autonomous_financial_agent(
     metrics: list[dict],
     market_snapshot: dict | None,
     sentiment_result: dict | None,
-):
+) -> dict:
     agent_output = run_financial_analyst_agent(
         company_name=company_name,
         ticker=ticker,
@@ -27,29 +27,46 @@ def run_autonomous_financial_agent(
 
     final_brief_lines = []
     final_brief_lines.append(f"# Autonomous Financial Analyst Brief: {company_name} ({ticker})")
-    final_brief_lines.append(f"## Recommendation\n{recommendation}")
+    final_brief_lines.append(f"## Recommendation\n**{recommendation}**")
 
     if valuation_result:
         final_brief_lines.append("## Valuation Summary")
-        final_brief_lines.append(f"- Signal: {valuation_result.get('signal')}")
-        final_brief_lines.append(f"- Fair Value: {valuation_result.get('estimated_fair_value')}")
-        final_brief_lines.append(f"- Valuation Gap %: {valuation_result.get('valuation_gap_pct')}")
+        efv = valuation_result.get("estimated_fair_value")
+        gap = valuation_result.get("valuation_gap_pct")
+        final_brief_lines.append(f"- **Signal:** {valuation_result.get('signal', 'N/A')}")
+        final_brief_lines.append(
+            f"- **Fair Value:** {f'{efv:,.0f}' if efv is not None else 'N/A'}"
+        )
+        final_brief_lines.append(
+            f"- **Valuation Gap %:** {f'{gap:.2f}%' if gap is not None else 'N/A'}"
+        )
 
     if sentiment_result:
         final_brief_lines.append("## Sentiment Summary")
-        final_brief_lines.append(f"- Sentiment Label: {sentiment_result.get('sentiment_label')}")
-        final_brief_lines.append(f"- Sentiment Score: {sentiment_result.get('sentiment_score')}")
-        final_brief_lines.append(f"- Risk Mentions: {sentiment_result.get('risk_hits')}")
+        final_brief_lines.append(
+            f"- **Sentiment Label:** {sentiment_result.get('sentiment_label', 'N/A')}"
+        )
+        final_brief_lines.append(
+            f"- **Sentiment Score:** {sentiment_result.get('sentiment_score', 0)}"
+        )
+        final_brief_lines.append(
+            f"- **Risk Mentions:** {sentiment_result.get('risk_hits', 0)}"
+        )
 
     if risks:
         final_brief_lines.append("## Risk Signals")
         for risk in risks:
-            final_brief_lines.append(f"- {risk}")
+            final_brief_lines.append(f"- ⚠️ {risk}")
     else:
-        final_brief_lines.append("## Risk Signals\n- No major risk flags detected.")
+        final_brief_lines.append("## Risk Signals\n- ✅ No major risk flags detected.")
 
     if investment_thesis:
         final_brief_lines.append(investment_thesis)
+
+    final_brief_lines.append(
+        "> ⚠️ This brief is AI-generated and should be used for research purposes only. "
+        "It does not constitute investment advice."
+    )
 
     return {
         "recommendation": recommendation,
