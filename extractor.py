@@ -10,6 +10,9 @@ from langchain_groq import ChatGroq
 
 load_dotenv()
 
+PRIMARY_MODEL = "llama-3.3-70b-versatile"
+FALLBACK_MODEL = "llama-3.1-8b-instant"
+
 
 class FinancialMetric(BaseModel):
     metric: str = Field(description="Metric name such as Revenue, Net Income, EPS, EBITDA, Cash Flow.")
@@ -24,7 +27,7 @@ class FinancialMetric(BaseModel):
 class ExtractionResult(BaseModel):
     company_name: str | None = Field(description="Company name if detected.")
     document_type: str | None = Field(
-        description="Type of document such as annual report, earnings release, or financial statement."
+        description="Type of document: annual report, earnings release, 10-K, 10-Q, financial statement, etc."
     )
     summary: str | None = Field(description="Short summary of what the document contains.")
     metrics: list[FinancialMetric] = Field(description="List of extracted financial metrics.")
@@ -38,122 +41,146 @@ def extract_text_from_pdf(pdf_bytes: bytes, max_pages: int = 8) -> str:
         for i in range(total_pages):
             page = doc.load_page(i)
             page_text = page.get_text("text").strip()
-            pages.append(f"[PAGE {i + 1}]\n{page_text}")
+            if page_text:
+                pages.append(f"[PAGE {i + 1}]\n{page_text}")
     finally:
         doc.close()
     return "\n\n".join(pages).strip()
 
 
-def _get_llm(temperature: float = 0.0) -> ChatGroq:
+def _get_llm(temperature: float = 0.0, use_fallback: bool = False) -> ChatGroq:
     groq_api_key = os.getenv("GROQ_API_KEY")
     if not groq_api_key:
         raise RuntimeError("Missing GROQ_API_KEY. Add it to your .env file or Streamlit secrets.")
-    return ChatGroq(
-        model="llama-3.1-8b-instant",
-        temperature=temperature,
-        api_key=groq_api_key,
-    )
+    model = FALLBACK_MODEL if use_fallback else PRIMARY_MODEL
+    return ChatGroq(model=model, temperature=temperature, api_key=groq_api_key)
 
 
 def extract_financial_metrics_from_text(text: str, temperature: float = 0.0) -> dict:
     parser = JsonOutputParser(pydantic_object=ExtractionResult)
 
     prompt = ChatPromptTemplate.from_template(
-        """
-You are a financial document extraction assistant.
+        """You are a senior financial analyst and document extraction specialist.
+
+Your task is to extract ALL financial metrics from the document below with high precision.
 
 Return ONLY valid JSON matching this schema:
 {format_instructions}
 
-Rules:
-- Extract only metrics explicitly present in the text.
-- Keep values exactly as written where possible.
-- Include page number when the source contains [PAGE X].
-- Include a short evidence quote for each metric.
-- Use null when unknown.
-- Do not invent data.
-- Prefer important finance metrics such as Revenue, Net Income, EPS, Operating Income,
-  Gross Profit, Gross Margin, EBITDA, Free Cash Flow, Total Assets, Total Liabilities, Guidance.
+EXTRACTION RULES:
+1. Extract every financial metric explicitly stated — do not invent or estimate values.
+2. Prioritize: Revenue, Net Income, EPS, Operating Income, Gross Profit, Gross Margin,
+   EBITDA, Free Cash Flow, Total Assets, Total Liabilities, Total Equity, Debt,
+   Cash & Equivalents, CapEx, Dividends, Guidance/Outlook figures.
+3. Preserve exact values as written (e.g. "$4.2B", "12.3%", "$(450M)").
+4. For each metric include a short evidence quote (max 20 words) from the source text.
+5. Use [PAGE X] markers to assign page numbers.
+6. Set confidence: 1.0 = explicitly stated, 0.7 = clearly implied, 0.5 = uncertain.
+7. Detect currency from symbols ($, €, £, ¥) or stated text.
+8. For periods: standardize to formats like Q1 2024, FY2024, 2023, H1 2024.
+9. Use null only when genuinely unknown — never guess.
 
 Document text:
 {text}
 """
     )
 
-    llm = _get_llm(temperature)
-    chain = prompt | llm | parser
-    result = chain.invoke(
-        {
-            "text": text[:24000],
+    try:
+        llm = _get_llm(temperature, use_fallback=False)
+        chain = prompt | llm | parser
+        return chain.invoke({
+            "text": text[:28000],
             "format_instructions": parser.get_format_instructions(),
-        }
-    )
-    return result
+        })
+    except Exception:
+        llm = _get_llm(temperature, use_fallback=True)
+        chain = prompt | llm | parser
+        return chain.invoke({
+            "text": text[:20000],
+            "format_instructions": parser.get_format_instructions(),
+        })
 
 
 def summarize_document(text: str, temperature: float = 0.0) -> str:
     prompt = ChatPromptTemplate.from_template(
-        """
-You are a financial analyst assistant.
+        """You are a senior equity research analyst writing for institutional investors.
 
-Summarize the key financial insights from the following document in 4 concise bullet points.
-Focus on performance, profitability, cash flow, guidance, trends, and important risks if present.
+Analyze the following financial document and provide a structured summary:
+
+**Performance Highlights:** 2-3 key financial results (revenue, profit, margins) with actual numbers.
+**Cash Flow & Balance Sheet:** Key liquidity and leverage observations.
+**Guidance & Outlook:** Any forward-looking statements or management guidance.
+**Key Risks:** 1-2 most significant risks mentioned.
+**Analyst Take:** One sentence overall assessment of financial health.
+
+Be concise, factual, and data-driven. Use actual numbers from the document where possible.
 
 Document text:
 {text}
 """
     )
 
-    llm = _get_llm(temperature)
-    chain = prompt | llm
-    response = chain.invoke({"text": text[:12000]})
+    try:
+        llm = _get_llm(temperature, use_fallback=False)
+        chain = prompt | llm
+        response = chain.invoke({"text": text[:16000]})
+    except Exception:
+        llm = _get_llm(temperature, use_fallback=True)
+        chain = prompt | llm
+        response = chain.invoke({"text": text[:12000]})
 
-    if hasattr(response, "content"):
-        return response.content
-    return str(response)
+    return response.content if hasattr(response, "content") else str(response)
 
 
 def answer_financial_question(
     query: str, context_chunks: list[str], temperature: float = 0.0
 ) -> str:
-    context = "\n\n".join(context_chunks)
+    context = "\n\n---\n\n".join(context_chunks)
 
     prompt = ChatPromptTemplate.from_template(
-        """
-You are a financial analyst assistant.
+        """You are a senior financial research analyst with deep expertise in equity analysis.
 
-Answer the user's question using only the context below.
-If the answer is not in the context, say clearly that you could not find it in the uploaded documents.
+Answer the question below using ONLY the provided context from uploaded financial documents.
+Be specific, cite figures where available, and structure your answer clearly.
+If the answer cannot be found, state: "This information was not found in the uploaded documents."
 
-Context:
+Context from documents:
 {context}
 
-Question:
-{query}
+Question: {query}
+
+Provide a thorough, analyst-quality answer:
 """
     )
 
-    llm = _get_llm(temperature)
-    chain = prompt | llm
-    response = chain.invoke({"context": context[:12000], "query": query})
+    try:
+        llm = _get_llm(temperature, use_fallback=False)
+        chain = prompt | llm
+        response = chain.invoke({"context": context[:16000], "query": query})
+    except Exception:
+        llm = _get_llm(temperature, use_fallback=True)
+        chain = prompt | llm
+        response = chain.invoke({"context": context[:12000], "query": query})
 
-    if hasattr(response, "content"):
-        return response.content
-    return str(response)
+    return response.content if hasattr(response, "content") else str(response)
 
 
 def categorize_metric(metric: str) -> str:
     metric = (metric or "").lower()
-    if "revenue" in metric or "sales" in metric:
+    if any(k in metric for k in ["revenue", "sales", "turnover"]):
         return "Revenue"
-    if "income" in metric or "profit" in metric or "earnings" in metric or "eps" in metric:
+    if any(k in metric for k in ["income", "profit", "earnings", "eps", "ebitda", "ebit"]):
         return "Profitability"
-    if "cash" in metric or "free cash flow" in metric:
+    if any(k in metric for k in ["cash", "free cash flow", "operating cash"]):
         return "Cash Flow"
-    if "asset" in metric or "liabilit" in metric or "equity" in metric:
+    if any(k in metric for k in ["asset", "liabilit", "equity", "debt", "leverage"]):
         return "Balance Sheet"
-    if "expense" in metric or "cost" in metric or "operating" in metric:
+    if any(k in metric for k in ["expense", "cost", "capex", "depreciation"]):
         return "Operations"
+    if any(k in metric for k in ["margin", "return", "roe", "roa", "roic"]):
+        return "Margins & Returns"
+    if any(k in metric for k in ["guidance", "outlook", "forecast", "target"]):
+        return "Guidance"
     return "Other"
 
 
@@ -163,12 +190,24 @@ def convert_value_to_numeric(value) -> float | None:
     text = str(value).strip()
     if not text:
         return None
-    is_negative = "(" in text and ")" in text
-    cleaned = re.sub(r"[^0-9.\-]", "", text)
-    if cleaned.count(".") > 1:
+
+    is_negative = ("(" in text and ")" in text) or text.lstrip("$€£¥ ").startswith("-")
+
+    multiplier = 1.0
+    upper = text.upper()
+    if "BILLION" in upper or upper.rstrip("BILLION").endswith("B"):
+        multiplier = 1_000_000_000
+    elif "MILLION" in upper or upper.rstrip("MILLION").endswith("M"):
+        multiplier = 1_000_000
+    elif "THOUSAND" in upper or upper.rstrip("THOUSAND").endswith("K"):
+        multiplier = 1_000
+
+    cleaned = re.sub(r"[^0-9.]", "", text)
+    if not cleaned or cleaned.count(".") > 1:
         return None
+
     try:
-        number = float(cleaned)
+        number = float(cleaned) * multiplier
         if is_negative and number > 0:
             number = -number
         return number
@@ -181,11 +220,13 @@ def parse_period_to_index(period: str):
         return None
     text = str(period).strip().upper()
 
-    quarter_match = re.match(r"Q([1-4])\s+(\d{4})", text)
+    quarter_match = re.match(r"Q([1-4])\s*[\s\-]?\s*(\d{4})", text)
     if quarter_match:
-        q = int(quarter_match.group(1))
-        year = int(quarter_match.group(2))
-        return year * 4 + q
+        return int(quarter_match.group(2)) * 4 + int(quarter_match.group(1))
+
+    half_match = re.match(r"H([12])\s*(\d{4})", text)
+    if half_match:
+        return int(half_match.group(2)) * 2 + int(half_match.group(1))
 
     fy_match = re.match(r"FY\s*(\d{4})", text)
     if fy_match:
@@ -203,9 +244,8 @@ def clean_llm_json(result):
         return result
     if isinstance(result, str):
         text = result.strip()
-        text = re.sub(r"^```json", "", text)
-        text = re.sub(r"^```", "", text)
-        text = re.sub(r"```$", "", text)
-        text = text.strip()
-        return json.loads(text)
+        text = re.sub(r"^```json\s*", "", text)
+        text = re.sub(r"^```\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        return json.loads(text.strip())
     raise ValueError(f"Unexpected LLM response format: {type(result)}")
