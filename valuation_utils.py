@@ -14,14 +14,11 @@ def extract_key_metric(metrics: list[dict], target_names: list[str]) -> Optional
     for item in metrics:
         metric_name = str(item.get("metric", "")).lower()
         numeric_value = item.get("numeric_value")
-
         if numeric_value is None:
             continue
-
         for target in target_names:
             if target in metric_name:
                 return safe_float(numeric_value)
-
     return None
 
 
@@ -32,7 +29,6 @@ def estimate_pe_fair_value(
 ) -> Optional[float]:
     if net_income is None or market_cap is None or net_income <= 0:
         return None
-
     return net_income * pe_multiple
 
 
@@ -42,7 +38,6 @@ def estimate_revenue_multiple_value(
 ) -> Optional[float]:
     if revenue is None or revenue <= 0:
         return None
-
     return revenue * revenue_multiple
 
 
@@ -52,14 +47,12 @@ def estimate_intrinsic_signal(
     revenue_value: Optional[float],
 ) -> dict:
     estimates = [v for v in [pe_value, revenue_value] if v is not None]
-
     if market_cap is None or not estimates:
         return {
             "estimated_fair_value": None,
             "valuation_gap_pct": None,
             "signal": "Insufficient Data",
         }
-
     estimated_fair_value = sum(estimates) / len(estimates)
     valuation_gap_pct = ((estimated_fair_value - market_cap) / market_cap) * 100
 
@@ -90,12 +83,10 @@ def build_valuation_summary(metrics: list[dict], market_snapshot: dict | None) -
         market_cap=market_cap,
         pe_multiple=20.0,
     )
-
     revenue_value = estimate_revenue_multiple_value(
         revenue=revenue,
         revenue_multiple=3.0,
     )
-
     signal_result = estimate_intrinsic_signal(
         market_cap=market_cap,
         pe_value=pe_value,
