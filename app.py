@@ -1,4 +1,4 @@
-.python-versio
+.python-version
 import json
 import pandas as pd
 import plotly.express as px
