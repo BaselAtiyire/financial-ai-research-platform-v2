@@ -14,7 +14,6 @@ def get_market_snapshot(symbol: str) -> dict:
 
     change = None
     change_pct = None
-
     if price is not None and previous_close not in (None, 0):
         change = price - previous_close
         change_pct = (change / previous_close) * 100
@@ -39,12 +38,10 @@ def get_price_history(symbol: str, period: str = "6mo", interval: str = "1d") ->
         auto_adjust=False,
         progress=False,
     )
-
     if df is None or df.empty:
         return pd.DataFrame()
 
     df = df.reset_index()
-
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
 
@@ -53,24 +50,19 @@ def get_price_history(symbol: str, period: str = "6mo", interval: str = "1d") ->
 
 def compare_market_performance(symbols: list[str], period: str = "6mo") -> pd.DataFrame:
     frames = []
-
     for symbol in symbols:
         hist = get_price_history(symbol, period=period, interval="1d")
         if hist.empty or "Close" not in hist.columns:
             continue
-
         hist = hist[["Date", "Close"]].copy()
         hist["Symbol"] = symbol.upper()
-
         first_close = hist["Close"].iloc[0]
         if first_close not in (None, 0):
             hist["Normalized"] = (hist["Close"] / first_close) * 100
-
         frames.append(hist)
 
     if not frames:
         return pd.DataFrame()
-
     return pd.concat(frames, ignore_index=True)
 
 
@@ -82,17 +74,21 @@ def company_name_to_ticker(company_name: str) -> str | None:
 
     ticker_map = {
         "apple": "AAPL",
+        "apple inc": "AAPL",
         "apple inc.": "AAPL",
         "tesla": "TSLA",
         "tesla, inc.": "TSLA",
+        "tesla inc": "TSLA",
         "tesla inc.": "TSLA",
         "amazon": "AMZN",
         "amazon.com": "AMZN",
         "amazon.com, inc.": "AMZN",
+        "amazon inc": "AMZN",
         "amazon inc.": "AMZN",
         "microsoft": "MSFT",
         "microsoft corporation": "MSFT",
         "alphabet": "GOOGL",
+        "alphabet inc": "GOOGL",
         "alphabet inc.": "GOOGL",
         "google": "GOOGL",
         "meta": "META",
@@ -100,6 +96,27 @@ def company_name_to_ticker(company_name: str) -> str | None:
         "meta platforms, inc.": "META",
         "nvidia": "NVDA",
         "nvidia corporation": "NVDA",
+        "netflix": "NFLX",
+        "netflix, inc.": "NFLX",
+        "salesforce": "CRM",
+        "salesforce, inc.": "CRM",
+        "berkshire hathaway": "BRK-B",
+        "jpmorgan": "JPM",
+        "jpmorgan chase": "JPM",
+        "johnson & johnson": "JNJ",
+        "visa": "V",
+        "mastercard": "MA",
+        "exxon": "XOM",
+        "exxonmobil": "XOM",
+        "walmart": "WMT",
+        "coca-cola": "KO",
+        "intel": "INTC",
+        "amd": "AMD",
+        "advanced micro devices": "AMD",
+        "paypal": "PYPL",
+        "adobe": "ADBE",
+        "disney": "DIS",
+        "the walt disney company": "DIS",
     }
 
     if name in ticker_map:
